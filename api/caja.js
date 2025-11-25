@@ -9,12 +9,7 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { tipo = 'all', fecha_desde, fecha_hasta } = req.query
 
-      let query = db`
-        SELECT mc.*, u.name as usuario_name
-        FROM movimientos_caja mc
-        LEFT JOIN users u ON mc.user_id = u.id
-        WHERE 1=1
-      `
+      let movimientos
 
       if (tipo !== 'all') {
         const tipoMap = {
@@ -22,20 +17,87 @@ export default async function handler(req, res) {
           egreso: 'Egreso',
         }
         const mappedTipo = tipoMap[tipo] || tipo
-        query = db`${query} AND mc.tipo = ${mappedTipo}`
+        
+        if (fecha_desde && fecha_hasta) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.tipo = ${mappedTipo}
+              AND mc.created_at >= ${fecha_desde}
+              AND mc.created_at <= ${fecha_hasta}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else if (fecha_desde) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.tipo = ${mappedTipo}
+              AND mc.created_at >= ${fecha_desde}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else if (fecha_hasta) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.tipo = ${mappedTipo}
+              AND mc.created_at <= ${fecha_hasta}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.tipo = ${mappedTipo}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        }
+      } else {
+        if (fecha_desde && fecha_hasta) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.created_at >= ${fecha_desde}
+              AND mc.created_at <= ${fecha_hasta}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else if (fecha_desde) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.created_at >= ${fecha_desde}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else if (fecha_hasta) {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            WHERE mc.created_at <= ${fecha_hasta}
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        } else {
+          movimientos = await db`
+            SELECT mc.*, u.name as usuario_name
+            FROM movimientos_caja mc
+            LEFT JOIN users u ON mc.user_id = u.id
+            ORDER BY mc.created_at DESC
+            LIMIT 100
+          `
+        }
       }
-
-      if (fecha_desde) {
-        query = db`${query} AND mc.created_at >= ${fecha_desde}`
-      }
-
-      if (fecha_hasta) {
-        query = db`${query} AND mc.created_at <= ${fecha_hasta}`
-      }
-
-      query = db`${query} ORDER BY mc.created_at DESC LIMIT 100`
-
-      const movimientos = await query
 
       // Format response
       const formatted = movimientos.map(mov => ({

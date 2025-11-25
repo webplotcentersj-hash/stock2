@@ -2,6 +2,15 @@ import { getDb } from './db.js'
 import { requireAuth } from './auth.js'
 
 export default async function handler(req, res) {
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end()
+  }
+
   try {
     const user = await requireAuth(req)
     const db = getDb()
@@ -9,34 +18,82 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { approval_status = 'all', status = 'all' } = req.query
 
-      let query = db`
-        SELECT p.*, u.name as user_name, u.role as user_role
-        FROM pedidos p
-        LEFT JOIN users u ON p.user_id = u.id
-        WHERE 1=1
-      `
+      let pedidos
 
       // Role-based filtering
       if (user.role !== 'administración' && user.role !== 'compras') {
-        query = db`
-          SELECT p.*, u.name as user_name, u.role as user_role
-          FROM pedidos p
-          LEFT JOIN users u ON p.user_id = u.id
-          WHERE p.user_id = ${user.id}
-        `
+        if (approval_status !== 'all' && status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ${user.id}
+              AND p.approval_status = ${approval_status}
+              AND p.status = ${status}
+            ORDER BY p.created_at DESC
+          `
+        } else if (approval_status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ${user.id}
+              AND p.approval_status = ${approval_status}
+            ORDER BY p.created_at DESC
+          `
+        } else if (status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ${user.id}
+              AND p.status = ${status}
+            ORDER BY p.created_at DESC
+          `
+        } else {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ${user.id}
+            ORDER BY p.created_at DESC
+          `
+        }
+      } else {
+        if (approval_status !== 'all' && status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.approval_status = ${approval_status}
+              AND p.status = ${status}
+            ORDER BY p.created_at DESC
+          `
+        } else if (approval_status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.approval_status = ${approval_status}
+            ORDER BY p.created_at DESC
+          `
+        } else if (status !== 'all') {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            WHERE p.status = ${status}
+            ORDER BY p.created_at DESC
+          `
+        } else {
+          pedidos = await db`
+            SELECT p.*, u.name as user_name, u.role as user_role
+            FROM pedidos p
+            LEFT JOIN users u ON p.user_id = u.id
+            ORDER BY p.created_at DESC
+          `
+        }
       }
-
-      if (approval_status && approval_status !== 'all') {
-        query = db`${query} AND p.approval_status = ${approval_status}`
-      }
-
-      if (status && status !== 'all') {
-        query = db`${query} AND p.status = ${status}`
-      }
-
-      query = db`${query} ORDER BY p.created_at DESC`
-
-      const pedidos = await query
       res.status(200).json(pedidos)
     } else if (req.method === 'POST') {
       const { client_name, description, image_url, items } = req.body

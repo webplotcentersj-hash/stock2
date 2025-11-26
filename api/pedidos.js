@@ -92,28 +92,22 @@ export default async function handler(req, res) {
     } else if (req.method === 'PUT') {
       const { id, ...updates } = req.body
 
-      // Build update query dynamically
-      const updateFields = []
-      const updateValues = []
-      let paramIndex = 1
+      const setClause = []
+      const values = []
 
-      Object.keys(updates).forEach((key) => {
-        if (key !== 'id') {
-          updateFields.push(`${key} = $${paramIndex}`)
-          updateValues.push(updates[key])
-          paramIndex++
-        }
+      Object.keys(updates).forEach((key, index) => {
+        setClause.push(`${key} = $${index + 1}`)
+        values.push(updates[key])
       })
 
-      if (updateFields.length === 0) {
+      if (setClause.length === 0) {
         return res.status(400).json({ error: 'No fields to update' })
       }
 
-      updateFields.push(`updated_at = NOW()`)
-      updateValues.push(id)
+      values.push(id)
+      const query = `UPDATE pedidos SET ${setClause.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`
 
-      const query = `UPDATE pedidos SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`
-      const [pedido] = await db.unsafe(query, updateValues)
+      const [pedido] = await db.unsafe(query, values)
       res.status(200).json(pedido)
     } else if (req.method === 'DELETE') {
       const { id } = req.query

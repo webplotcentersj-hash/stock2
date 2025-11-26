@@ -9,31 +9,33 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { search = '', sector = 'all' } = req.query
 
-      let articulos
+      let query = db`
+        SELECT * FROM articulos WHERE 1=1
+      `
 
-      if (search && sector !== 'all') {
-        articulos = await db`
-          SELECT * FROM articulos 
-          WHERE sector = ${sector}
-            AND (descripcion ILIKE ${'%' + search + '%'} OR codigo ILIKE ${'%' + search + '%'})
-          ORDER BY descripcion ASC
-        `
-      } else if (search) {
-        articulos = await db`
+      if (search) {
+        query = db`
           SELECT * FROM articulos 
           WHERE descripcion ILIKE ${'%' + search + '%'} 
              OR codigo ILIKE ${'%' + search + '%'}
-          ORDER BY descripcion ASC
         `
-      } else if (sector !== 'all') {
-        articulos = await db`
+      }
+
+      if (sector && sector !== 'all') {
+        query = db`
           SELECT * FROM articulos 
           WHERE sector = ${sector}
-          ORDER BY descripcion ASC
+          ${search ? db`AND (descripcion ILIKE ${'%' + search + '%'} OR codigo ILIKE ${'%' + search + '%'})` : db``}
         `
-      } else {
-        articulos = await db`SELECT * FROM articulos ORDER BY descripcion ASC`
       }
+
+      if (!search && sector === 'all') {
+        query = db`SELECT * FROM articulos ORDER BY descripcion ASC`
+      } else {
+        query = db`${query} ORDER BY descripcion ASC`
+      }
+
+      const articulos = await query
       res.status(200).json(articulos)
     } else if (req.method === 'POST') {
       const { codigo, descripcion, sector, stock, stock_minimo, precio, imagen } = req.body
@@ -48,28 +50,22 @@ export default async function handler(req, res) {
     } else if (req.method === 'PUT') {
       const { id, ...updates } = req.body
 
-      // Build update query dynamically
-      const updateFields = []
-      const updateValues = []
-      let paramIndex = 1
+      const setClause = []
+      const values = []
 
-      Object.keys(updates).forEach((key) => {
-        if (key !== 'id') {
-          updateFields.push(`${key} = $${paramIndex}`)
-          updateValues.push(updates[key])
-          paramIndex++
-        }
+      Object.keys(updates).forEach((key, index) => {
+        setClause.push(`${key} = $${index + 1}`)
+        values.push(updates[key])
       })
 
-      if (updateFields.length === 0) {
+      if (setClause.length === 0) {
         return res.status(400).json({ error: 'No fields to update' })
       }
 
-      updateFields.push(`updated_at = NOW()`)
-      updateValues.push(id)
+      values.push(id)
+      const query = `UPDATE articulos SET ${setClause.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`
 
-      const query = `UPDATE articulos SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`
-      const [articulo] = await db.unsafe(query, updateValues)
+      const [articulo] = await db.unsafe(query, values)
       res.status(200).json(articulo)
     } else if (req.method === 'DELETE') {
       const { id } = req.query

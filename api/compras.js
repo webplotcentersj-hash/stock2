@@ -9,7 +9,13 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       const { status = 'all' } = req.query
 
-      let ordenes
+      let query = db`
+        SELECT oc.*, a.*, u.name as solicitado_por_name
+        FROM ordenes_compra oc
+        LEFT JOIN articulos a ON oc.articulo_id = a.id
+        LEFT JOIN users u ON oc.solicitado_por = u.id
+        WHERE 1=1
+      `
 
       if (status !== 'all') {
         const statusMap = {
@@ -18,23 +24,12 @@ export default async function handler(req, res) {
           recibida: 'Completada',
         }
         const mappedStatus = statusMap[status] || status
-        ordenes = await db`
-          SELECT oc.*, a.*, u.name as solicitado_por_name
-          FROM ordenes_compra oc
-          LEFT JOIN articulos a ON oc.articulo_id = a.id
-          LEFT JOIN users u ON oc.solicitado_por = u.id
-          WHERE oc.status = ${mappedStatus}
-          ORDER BY oc.created_at DESC
-        `
-      } else {
-        ordenes = await db`
-          SELECT oc.*, a.*, u.name as solicitado_por_name
-          FROM ordenes_compra oc
-          LEFT JOIN articulos a ON oc.articulo_id = a.id
-          LEFT JOIN users u ON oc.solicitado_por = u.id
-          ORDER BY oc.created_at DESC
-        `
+        query = db`${query} AND oc.status = ${mappedStatus}`
       }
+
+      query = db`${query} ORDER BY oc.created_at DESC`
+
+      const ordenes = await query
 
       // Format response
       const formatted = ordenes.map(orden => ({
@@ -78,28 +73,22 @@ export default async function handler(req, res) {
     } else if (req.method === 'PUT') {
       const { id, ...updates } = req.body
 
-      // Build update query dynamically
-      const updateFields = []
-      const updateValues = []
-      let paramIndex = 1
+      const setClause = []
+      const values = []
 
-      Object.keys(updates).forEach((key) => {
-        if (key !== 'id') {
-          updateFields.push(`${key} = $${paramIndex}`)
-          updateValues.push(updates[key])
-          paramIndex++
-        }
+      Object.keys(updates).forEach((key, index) => {
+        setClause.push(`${key} = $${index + 1}`)
+        values.push(updates[key])
       })
 
-      if (updateFields.length === 0) {
+      if (setClause.length === 0) {
         return res.status(400).json({ error: 'No fields to update' })
       }
 
-      updateFields.push(`updated_at = NOW()`)
-      updateValues.push(id)
+      values.push(id)
+      const query = `UPDATE ordenes_compra SET ${setClause.join(', ')}, updated_at = NOW() WHERE id = $${values.length} RETURNING *`
 
-      const query = `UPDATE ordenes_compra SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`
-      const [orden] = await db.unsafe(query, updateValues)
+      const [orden] = await db.unsafe(query, values)
 
       // If status is Completada, update stock
       if (updates.status === 'Completada') {

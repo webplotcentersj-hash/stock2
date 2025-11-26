@@ -31,6 +31,10 @@ dist-ssr
 
 # Old PHP files (keep for reference)
 public_html (20)/
-*.sql
 *.zip
+
+# SQL dumps (keep Supabase schema tracked)
+*.sql
+!supabase/
+!supabase/**/*.sql
 

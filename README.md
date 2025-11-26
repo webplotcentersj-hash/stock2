@@ -1,23 +1,21 @@
 # Stock Plot Center v2.0
 
-Sistema de gestión de stock migrado a React, Vercel y Neon PostgreSQL.
+Sistema de gestión de stock migrado a React, Vercel y Supabase.
 
 ## 🚀 Tecnologías
 
 - **Frontend**: React 18 + Vite
-- **Backend**: Vercel Serverless Functions
-- **Base de Datos**: Neon PostgreSQL (serverless)
+- **Backend**: Supabase (PostgreSQL + Auth + Storage)
 - **Deploy**: Vercel
 - **UI**: Tailwind CSS + Lucide Icons
 - **Charts**: Chart.js
 - **AI**: Google Gemini (PlotAI)
-- **Autenticación**: JWT
 
 ## 📋 Requisitos Previos
 
 - Node.js 18+ y npm
-- Cuenta de [Neon](https://neon.tech) (PostgreSQL serverless)
-- Cuenta de [Vercel](https://vercel.com)
+- Cuenta de Supabase
+- Cuenta de Vercel
 - API Key de Google Gemini (opcional, para PlotAI)
 
 ## 🛠️ Instalación
@@ -34,23 +32,25 @@ Sistema de gestión de stock migrado a React, Vercel y Neon PostgreSQL.
    ```
 
 3. **Configurar variables de entorno**
-
-   Crear archivo `.env.local` en la raíz del proyecto:
+   ```bash
+   cp .env.example .env
+   ```
+   
+   Editar `.env` con tus credenciales:
    ```env
-   DATABASE_URL=postgresql://user:password@host.neon.tech/dbname?sslmode=require
-   JWT_SECRET=tu-secret-key-super-segura-cambiar-en-produccion
+   VITE_SUPABASE_URL=tu_supabase_url
+   VITE_SUPABASE_ANON_KEY=tu_supabase_anon_key
    VITE_GEMINI_API_KEY=tu_gemini_api_key
    ```
 
-   **Para producción en Vercel:**
-   - Ir a Vercel Dashboard > Settings > Environment Variables
-   - Agregar las mismas variables
-
-4. **Configurar Neon PostgreSQL**
-   - Crear un nuevo proyecto en [Neon](https://neon.tech)
-   - Copiar la connection string (DATABASE_URL)
-   - Ejecutar el script SQL en `neon/schema.sql` en el SQL Editor de Neon
-   - Ejecutar `neon/migration_helper.sql` si es necesario
+4. **Configurar Supabase**
+   - Crear un nuevo proyecto en [Supabase](https://supabase.com)
+   - Ejecutar el script SQL en `supabase/schema.sql` en el SQL Editor
+   - Ejecutar `supabase/migration_helper.sql`
+   - Ejecutar `supabase/migrate_articulos.sql` para migrar los artículos
+   - Crear buckets de Storage:
+     - `articulos` (público)
+     - `pedidos` (público)
 
 5. **Ejecutar en desarrollo**
    ```bash
@@ -62,10 +62,7 @@ Sistema de gestión de stock migrado a React, Vercel y Neon PostgreSQL.
 1. **Conectar repositorio a Vercel**
    - Ir a [Vercel](https://vercel.com)
    - Importar proyecto desde Git
-   - Configurar variables de entorno en Vercel Dashboard:
-     - `DATABASE_URL`
-     - `JWT_SECRET`
-     - `VITE_GEMINI_API_KEY` (opcional)
+   - Configurar variables de entorno en Vercel Dashboard
 
 2. **Configurar Build Settings**
    - Framework Preset: Vite
@@ -76,34 +73,28 @@ Sistema de gestión de stock migrado a React, Vercel y Neon PostgreSQL.
    - Vercel detectará automáticamente el proyecto
    - El deploy se realizará en cada push a la rama principal
 
-## 🗄️ Estructura de la Base de Datos
+## 🗄️ Migración de Datos
 
-El esquema de base de datos está en `neon/schema.sql`. Las tablas principales son:
+Para migrar datos desde MySQL a Supabase:
 
-- `users` - Usuarios del sistema
-- `articulos` - Artículos/Productos en stock
-- `pedidos` - Pedidos de clientes
-- `pedidos_items` - Items de cada pedido
-- `ordenes_compra` - Órdenes de compra
-- `movimientos_caja` - Movimientos de caja
-- `notifications` - Notificaciones
+1. Exportar datos desde MySQL en formato CSV
+2. Importar a Supabase usando el Dashboard o scripts de migración
+3. Ajustar IDs si es necesario (Supabase usa UUIDs)
 
 ## 🔐 Autenticación
 
-El sistema usa JWT para autenticación. Los usuarios deben:
+El sistema usa Supabase Auth. Los usuarios deben:
 
-1. Estar registrados en la tabla `users` con contraseña hasheada (bcrypt)
-2. Hacer login a través de `/api/login`
-3. El token JWT se almacena en localStorage
+1. Crearse en Supabase Auth (Dashboard > Authentication > Users)
+2. Crear registro correspondiente en la tabla `users` con el mismo UUID
 
-Para crear un usuario inicial:
+Ejemplo de inserción de usuario:
 ```sql
-INSERT INTO users (id, email, password, name, role)
+INSERT INTO public.users (id, email, name, role)
 VALUES (
-  gen_random_uuid(),
-  'admin@example.com',
-  '$2a$10$...', -- Hash bcrypt de la contraseña
-  'Administrador',
+  'uuid-del-usuario-en-auth',
+  'usuario@example.com',
+  'Nombre Usuario',
   'administración'
 );
 ```
@@ -111,28 +102,21 @@ VALUES (
 ## 📁 Estructura del Proyecto
 
 ```
-├── api/                    # Vercel Serverless Functions
-│   ├── db.js              # Conexión a Neon
-│   ├── auth.js            # Utilidades de autenticación JWT
-│   ├── login.js           # Endpoint de login
-│   ├── stock.js           # API de stock
-│   ├── pedidos.js         # API de pedidos
-│   ├── compras.js         # API de compras
-│   ├── caja.js            # API de caja
-│   └── dashboard.js       # API de dashboard
 ├── src/
-│   ├── components/        # Componentes reutilizables
-│   ├── contexts/         # Contextos de React (Auth)
-│   ├── lib/              # Utilidades (API client)
-│   ├── pages/            # Páginas principales
-│   ├── services/         # Servicios API
-│   ├── utils/            # Utilidades
-│   ├── App.jsx           # Componente principal
-│   ├── main.jsx          # Punto de entrada
-│   └── index.css         # Estilos globales
-├── neon/
-│   └── schema.sql        # Esquema de base de datos
-├── public/               # Archivos estáticos
+│   ├── components/      # Componentes reutilizables
+│   ├── contexts/        # Contextos de React (Auth)
+│   ├── lib/            # Configuración de Supabase
+│   ├── pages/          # Páginas principales
+│   ├── services/       # APIs y servicios
+│   ├── utils/          # Utilidades
+│   ├── App.jsx         # Componente principal
+│   ├── main.jsx        # Punto de entrada
+│   └── index.css       # Estilos globales
+├── supabase/
+│   ├── schema.sql      # Esquema de base de datos
+│   ├── migration_helper.sql  # Funciones helper
+│   └── migrate_articulos.sql # Datos de artículos
+├── public/             # Archivos estáticos
 └── package.json
 ```
 
@@ -146,24 +130,26 @@ VALUES (
 - ✅ Dashboard con estadísticas
 - ✅ Sistema de roles y permisos
 - ✅ Integración con Gemini AI (PlotAI)
+- ✅ Almacenamiento de imágenes
 - ✅ Filtros avanzados en todas las secciones
 - ✅ Logo de Plot Center integrado
 
 ## 🔒 Seguridad
 
-- Autenticación mediante JWT
-- Contraseñas hasheadas con bcrypt
-- Validación de permisos por rol en el backend
-- Variables de entorno para credenciales sensibles
+- Row Level Security (RLS) habilitado en todas las tablas
+- Políticas de acceso basadas en roles
+- Autenticación mediante Supabase Auth
+- Variables de entorno para credenciales
 
-## 📝 Notas de Migración desde Supabase
+## 📝 Notas de Migración
 
-### Cambios principales:
+### Cambios desde PHP/MySQL:
 
-1. **Base de Datos**: De Supabase a Neon PostgreSQL directo
-2. **Autenticación**: De Supabase Auth a JWT propio
-3. **Storage**: Ya no hay Supabase Storage (usar Cloudinary o similar)
-4. **Backend**: API con Vercel Serverless Functions en lugar de Supabase client
+1. **IDs**: Cambiados de INT a UUID
+2. **Timestamps**: Usa TIMESTAMPTZ en lugar de TIMESTAMP
+3. **Enums**: Convertidos a CHECK constraints
+4. **Sesiones**: Reemplazadas por Supabase Auth
+5. **Archivos**: Migrados a Supabase Storage
 
 ### Funcionalidades Pendientes:
 
@@ -172,23 +158,20 @@ VALUES (
 - [ ] Notificaciones en tiempo real
 - [ ] Exportación de reportes
 - [ ] Integración completa de PlotAI en UI
-- [ ] Upload de imágenes a Cloudinary o similar
 
 ## 🐛 Troubleshooting
 
-### Error de conexión a Neon
-- Verificar que `DATABASE_URL` esté correctamente configurada
-- Verificar que la conexión use SSL (`?sslmode=require`)
-- Revisar que el proyecto Neon esté activo
+### Error de conexión a Supabase
+- Verificar variables de entorno
+- Revisar que las políticas RLS estén correctas
+
+### Error al subir imágenes
+- Verificar que los buckets de Storage existan
+- Revisar políticas de acceso de los buckets
 
 ### Error de autenticación
-- Verificar que `JWT_SECRET` esté configurado
-- Verificar que el usuario exista en la tabla `users`
-- Verificar que la contraseña esté hasheada correctamente
-
-### Error en API routes
-- Verificar que las funciones estén en la carpeta `api/`
-- Verificar que Vercel esté configurado para usar Serverless Functions
+- Verificar que el usuario exista en Supabase Auth
+- Verificar que exista registro en tabla `users`
 
 ## 📄 Licencia
 
@@ -197,3 +180,4 @@ Propietario - Stock Plot Center
 ## 👥 Soporte
 
 Para soporte, contactar al equipo de desarrollo.
+

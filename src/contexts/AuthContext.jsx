@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import request, { setToken, removeToken } from '../lib/api.js'
+import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext({})
 
@@ -17,57 +17,67 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Check if user is logged in
-    const token = localStorage.getItem('auth_token')
-    const storedUser = localStorage.getItem('auth_user')
-
-    if (token && storedUser) {
-      try {
-        const userData = JSON.parse(storedUser)
-        setUser({ id: userData.id, email: userData.email })
-        setUserProfile(userData)
-      } catch (error) {
-        console.error('Error parsing stored user:', error)
-        removeToken()
-        localStorage.removeItem('auth_user')
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchUserProfile(session.user.id)
+      } else {
+        setLoading(false)
       }
-    }
+    })
 
-    setLoading(false)
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      setUser(session?.user ?? null)
+      if (session?.user) {
+        await fetchUserProfile(session.user.id)
+      } else {
+        setUserProfile(null)
+        setLoading(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
   }, [])
 
-  const signIn = async (email, password) => {
+  const fetchUserProfile = async (userId) => {
     try {
-      const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      })
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single()
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: response.statusText }))
-        throw new Error(error.error || 'Login failed')
-      }
-
-      const data = await response.json()
-
-      setToken(data.token)
-      localStorage.setItem('auth_user', JSON.stringify(data.user))
-
-      setUser({ id: data.user.id, email: data.user.email })
-      setUserProfile(data.user)
-
-      return { data, error: null }
+      if (error) throw error
+      setUserProfile(data)
     } catch (error) {
-      return { data: null, error }
+      console.error('Error fetching user profile:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
+  const signIn = async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) throw error
+
+    if (data.user) {
+      await fetchUserProfile(data.user.id)
+    }
+
+    return { data, error }
+  }
+
   const signOut = async () => {
-    removeToken()
-    localStorage.removeItem('auth_user')
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
     setUser(null)
     setUserProfile(null)
   }
@@ -82,3 +92,4 @@ export const AuthProvider = ({ children }) => {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
+
